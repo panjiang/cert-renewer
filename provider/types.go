@@ -23,6 +23,10 @@ type CertificateResolution struct {
 	Pending  *PendingCertificate
 }
 
+type ResolveOptions struct {
+	Force bool
+}
+
 type PendingCertificate struct {
 	CertificateID string
 	Status        uint64

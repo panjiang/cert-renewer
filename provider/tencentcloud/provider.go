@@ -65,13 +65,19 @@ func New(cfg Config) (*Provider, error) {
 	}, nil
 }
 
-func (c *Provider) ResolveCertificate(ctx context.Context, domain string, current *providerpkg.ObservedCertificate) (*providerpkg.CertificateResolution, error) {
-	material, err := c.findLatestDeployableCertificate(ctx, domain, current)
+func (c *Provider) ResolveCertificate(ctx context.Context, domain string, current *providerpkg.ObservedCertificate, options providerpkg.ResolveOptions) (*providerpkg.CertificateResolution, error) {
+	material, err := c.findLatestDeployableCertificate(ctx, domain, current, options)
 	if err != nil {
 		return nil, err
 	}
 	if material != nil {
 		return &providerpkg.CertificateResolution{Material: material}, nil
+	}
+	if options.Force {
+		zap.L().Info("force mode found no deployable provider certificate",
+			zap.String("provider", "tencentcloud"),
+			zap.String("domain", domain))
+		return &providerpkg.CertificateResolution{}, nil
 	}
 
 	if !c.cfg.AutoApply.Enabled {
@@ -114,7 +120,7 @@ func (c *Provider) ResolveCertificate(ctx context.Context, domain string, curren
 	return c.waitForIssuedCertificate(ctx, domain, pending.CertificateID)
 }
 
-func (c *Provider) findLatestDeployableCertificate(ctx context.Context, domain string, current *providerpkg.ObservedCertificate) (*providerpkg.CertificateMaterial, error) {
+func (c *Provider) findLatestDeployableCertificate(ctx context.Context, domain string, current *providerpkg.ObservedCertificate, options providerpkg.ResolveOptions) (*providerpkg.CertificateMaterial, error) {
 	candidates, err := c.listCertificates(ctx, domain, true)
 	if err != nil {
 		return nil, err
@@ -125,7 +131,7 @@ func (c *Provider) findLatestDeployableCertificate(ctx context.Context, domain s
 		zap.Int("candidates", len(candidates)))
 
 	for _, candidate := range candidates {
-		if candidate.notAfter.Before(current.NotAfter) {
+		if !options.Force && current != nil && candidate.notAfter.Before(current.NotAfter) {
 			zap.L().Debug("skipping candidate older than current certificate",
 				zap.String("provider", "tencentcloud"),
 				zap.String("domain", domain),
@@ -143,7 +149,7 @@ func (c *Provider) findLatestDeployableCertificate(ctx context.Context, domain s
 		if err != nil {
 			return nil, fmt.Errorf("download candidate %s: %w", candidate.id, err)
 		}
-		if material.Fingerprint == current.Fingerprint {
+		if !options.Force && current != nil && material.Fingerprint == current.Fingerprint {
 			zap.L().Debug("skipping candidate with same fingerprint",
 				zap.String("provider", "tencentcloud"),
 				zap.String("domain", domain),
@@ -151,7 +157,7 @@ func (c *Provider) findLatestDeployableCertificate(ctx context.Context, domain s
 				zap.String("fingerprint", material.Fingerprint))
 			continue
 		}
-		if material.NotAfter.Before(current.NotAfter) {
+		if !options.Force && current != nil && material.NotAfter.Before(current.NotAfter) {
 			zap.L().Debug("skipping downloaded candidate older than current certificate",
 				zap.String("provider", "tencentcloud"),
 				zap.String("domain", domain),

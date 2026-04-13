@@ -70,7 +70,7 @@ func TestProviderResolveCertificate(t *testing.T) {
 			},
 		}
 
-		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current)
+		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{})
 		if err != nil {
 			t.Fatalf("ResolveCertificate() error = %v", err)
 		}
@@ -129,7 +129,7 @@ func TestProviderResolveCertificate(t *testing.T) {
 			},
 		}
 
-		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current)
+		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{})
 		if err != nil {
 			t.Fatalf("ResolveCertificate() error = %v", err)
 		}
@@ -175,7 +175,7 @@ func TestProviderResolveCertificate(t *testing.T) {
 			},
 		}
 
-		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current)
+		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{})
 		if err != nil {
 			t.Fatalf("ResolveCertificate() error = %v", err)
 		}
@@ -223,7 +223,7 @@ func TestProviderResolveCertificate(t *testing.T) {
 			},
 		}
 
-		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current)
+		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{})
 		if err != nil {
 			t.Fatalf("ResolveCertificate() error = %v", err)
 		}
@@ -260,7 +260,7 @@ func TestProviderResolveCertificate(t *testing.T) {
 			},
 		}
 
-		_, err := provider.ResolveCertificate(context.Background(), current.Domain, current)
+		_, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{})
 		if err == nil {
 			t.Fatal("ResolveCertificate() expected error")
 		}
@@ -296,7 +296,7 @@ func TestProviderResolveCertificate(t *testing.T) {
 			Domain:      "*.yourdomain.com",
 			Fingerprint: "current-fingerprint",
 			NotAfter:    current.NotAfter,
-		})
+		}, providerpkg.ResolveOptions{})
 		if err != nil {
 			t.Fatalf("ResolveCertificate() error = %v", err)
 		}
@@ -308,6 +308,132 @@ func TestProviderResolveCertificate(t *testing.T) {
 		}
 		if applied {
 			t.Fatal("ApplyCertificate should not be called for wildcard domain")
+		}
+	})
+
+	t.Run("force mode allows older deployable certificate", func(t *testing.T) {
+		applied := false
+		provider := &Provider{
+			cfg: Config{
+				AutoApply: AutoApplyConfig{
+					Enabled:      true,
+					PollInterval: time.Minute,
+					PollTimeout:  10 * time.Minute,
+				},
+			},
+			listCertificatesFunc: func(ctx context.Context, domain string, deployableOnly bool) ([]certificateRecord, error) {
+				return []certificateRecord{
+					{
+						id:       "older-cert",
+						notAfter: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+					},
+				}, nil
+			},
+			downloadCertificateFunc: func(ctx context.Context, domain, certificateID string) (*providerpkg.CertificateMaterial, error) {
+				return &providerpkg.CertificateMaterial{
+					CertificateID: certificateID,
+					Fingerprint:   "older-fingerprint",
+					NotAfter:      time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+				}, nil
+			},
+			applyCertificateFunc: func(ctx context.Context, domain string) (string, error) {
+				applied = true
+				return "", nil
+			},
+		}
+
+		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{Force: true})
+		if err != nil {
+			t.Fatalf("ResolveCertificate() error = %v", err)
+		}
+		if resolution == nil || resolution.Material == nil {
+			t.Fatal("ResolveCertificate() expected deployable material in force mode")
+		}
+		if resolution.Material.CertificateID != "older-cert" {
+			t.Fatalf("CertificateID = %q, want %q", resolution.Material.CertificateID, "older-cert")
+		}
+		if applied {
+			t.Fatal("ApplyCertificate should not be called in force mode when deployable certificate exists")
+		}
+	})
+
+	t.Run("force mode allows same fingerprint certificate", func(t *testing.T) {
+		applied := false
+		provider := &Provider{
+			cfg: Config{
+				AutoApply: AutoApplyConfig{
+					Enabled:      true,
+					PollInterval: time.Minute,
+					PollTimeout:  10 * time.Minute,
+				},
+			},
+			listCertificatesFunc: func(ctx context.Context, domain string, deployableOnly bool) ([]certificateRecord, error) {
+				return []certificateRecord{
+					{
+						id:       "same-fingerprint-cert",
+						notAfter: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+					},
+				}, nil
+			},
+			downloadCertificateFunc: func(ctx context.Context, domain, certificateID string) (*providerpkg.CertificateMaterial, error) {
+				return &providerpkg.CertificateMaterial{
+					CertificateID: certificateID,
+					Fingerprint:   current.Fingerprint,
+					NotAfter:      time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+				}, nil
+			},
+			applyCertificateFunc: func(ctx context.Context, domain string) (string, error) {
+				applied = true
+				return "", nil
+			},
+		}
+
+		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{Force: true})
+		if err != nil {
+			t.Fatalf("ResolveCertificate() error = %v", err)
+		}
+		if resolution == nil || resolution.Material == nil {
+			t.Fatal("ResolveCertificate() expected material in force mode")
+		}
+		if resolution.Material.CertificateID != "same-fingerprint-cert" {
+			t.Fatalf("CertificateID = %q, want %q", resolution.Material.CertificateID, "same-fingerprint-cert")
+		}
+		if applied {
+			t.Fatal("ApplyCertificate should not be called in force mode when deployable certificate exists")
+		}
+	})
+
+	t.Run("force mode does not auto apply when no deployable certificate exists", func(t *testing.T) {
+		applied := false
+		provider := &Provider{
+			cfg: Config{
+				AutoApply: AutoApplyConfig{
+					Enabled:      true,
+					PollInterval: time.Minute,
+					PollTimeout:  10 * time.Minute,
+				},
+			},
+			listCertificatesFunc: func(ctx context.Context, domain string, deployableOnly bool) ([]certificateRecord, error) {
+				return nil, nil
+			},
+			applyCertificateFunc: func(ctx context.Context, domain string) (string, error) {
+				applied = true
+				return "applied-cert", nil
+			},
+		}
+
+		resolution, err := provider.ResolveCertificate(context.Background(), current.Domain, current, providerpkg.ResolveOptions{Force: true})
+		if err != nil {
+			t.Fatalf("ResolveCertificate() error = %v", err)
+		}
+		if resolution == nil {
+			t.Fatal("ResolveCertificate() expected non-nil resolution")
+		}
+		if resolution.Material != nil || resolution.Pending != nil {
+			t.Fatal("ResolveCertificate() expected empty resolution in force mode without deployable certificate")
+		}
+		if applied {
+			t.Fatal("ApplyCertificate should not be called in force mode without deployable certificate")
 		}
 	})
 }

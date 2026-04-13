@@ -11,11 +11,13 @@ import (
 )
 
 type Updater struct {
-	cfg       *Config
-	notifier  Notifier
-	providers map[string]providerpkg.Provider
-	deployer  *LocalDeployer
-	ctx       context.Context
+	cfg              *Config
+	notifier         Notifier
+	providers        map[string]providerpkg.Provider
+	deployer         domainDeployer
+	probeCertificate probeCertificateFunc
+	verifyDeployment verifyDeploymentFunc
+	ctx              context.Context
 }
 
 type successfulUpdate struct {
@@ -31,6 +33,24 @@ type deployedUpdate struct {
 	result   *DeployResult
 }
 
+type CheckOptions struct {
+	Force bool
+}
+
+type CheckResult struct {
+	Domains           int
+	SuccessfulUpdates int
+	Failures          int
+}
+
+type domainDeployer interface {
+	DeployDomain(ctx context.Context, domain DomainConfig, material *CertificateMaterial) (*DeployResult, error)
+	RunGlobalCommands(ctx context.Context, commands []string) ([]string, error)
+}
+
+type probeCertificateFunc func(ctx context.Context, domain string) (*ObservedCertificate, error)
+type verifyDeploymentFunc func(ctx context.Context, domain, expectedFingerprint string) (*ObservedCertificate, error)
+
 func NewUpdater(cfg *Config, notifier Notifier) (*Updater, func(), error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -41,11 +61,13 @@ func NewUpdater(cfg *Config, notifier Notifier) (*Updater, func(), error) {
 	}
 
 	return &Updater{
-			cfg:       cfg,
-			notifier:  notifier,
-			providers: providers,
-			deployer:  NewLocalDeployer(),
-			ctx:       ctx,
+			cfg:              cfg,
+			notifier:         notifier,
+			providers:        providers,
+			deployer:         NewLocalDeployer(),
+			probeCertificate: probeTLSCertificate,
+			verifyDeployment: verifyExternalDeployment,
+			ctx:              ctx,
 		}, func() {
 			cancel()
 			zap.L().Info("stopped")
@@ -56,9 +78,9 @@ func (u *Updater) Run() {
 	ticker := time.NewTicker(u.cfg.Alert.CheckInterval)
 	defer ticker.Stop()
 
-	zap.L().Info("started", zap.Duration("interval", u.cfg.Alert.CheckInterval))
+	zap.L().Info("started", zap.Duration("interval", u.cfg.Alert.CheckInterval), zap.Bool("force", false))
 	for {
-		u.checkOnce(u.ctx)
+		u.checkOnce(u.ctx, CheckOptions{})
 		select {
 		case <-ticker.C:
 		case <-u.ctx.Done():
@@ -67,14 +89,21 @@ func (u *Updater) Run() {
 	}
 }
 
-func (u *Updater) checkOnce(ctx context.Context) {
+func (u *Updater) RunOnce(options CheckOptions) CheckResult {
+	return u.checkOnce(u.ctx, options)
+}
+
+func (u *Updater) checkOnce(ctx context.Context, options CheckOptions) CheckResult {
 	var deployed []deployedUpdate
 	var failureCount int
+	result := CheckResult{Domains: len(u.cfg.Domains)}
 
-	zap.L().Info("certificate check round started", zap.Int("domains", len(u.cfg.Domains)))
+	zap.L().Info("certificate check round started",
+		zap.Int("domains", len(u.cfg.Domains)),
+		zap.Bool("force", options.Force))
 
 	for _, domain := range u.cfg.Domains {
-		item, ok := u.handleDomain(ctx, domain)
+		item, ok := u.handleDomain(ctx, domain, options)
 		if !ok {
 			failureCount++
 			zap.L().Warn("stopping certificate check round because domain update failed",
@@ -90,22 +119,26 @@ func (u *Updater) checkOnce(ctx context.Context) {
 	}
 
 	if len(deployed) == 0 {
+		result.Failures = failureCount
 		zap.L().Info("certificate check round finished",
 			zap.Int("domains", len(u.cfg.Domains)),
 			zap.Int("successfulUpdates", 0),
-			zap.Int("failures", failureCount))
-		return
+			zap.Int("failures", failureCount),
+			zap.Bool("force", options.Force))
+		return result
 	}
 
 	if failureCount > 0 {
+		result.Failures = failureCount
 		zap.L().Warn("skipping global post commands because a domain update failed",
 			zap.Int("deployedUpdates", len(deployed)),
 			zap.Int("failures", failureCount))
 		zap.L().Info("certificate check round finished",
 			zap.Int("domains", len(u.cfg.Domains)),
 			zap.Int("successfulUpdates", 0),
-			zap.Int("failures", failureCount))
-		return
+			zap.Int("failures", failureCount),
+			zap.Bool("force", options.Force))
+		return result
 	}
 
 	zap.L().Info("running global post commands", zap.Int("commands", len(u.cfg.GlobalPostCommands)))
@@ -122,11 +155,13 @@ func (u *Updater) checkOnce(ctx context.Context) {
 			u.notifier.Failure("Certificate Update Failed",
 				formatFailureNotification(item.domain.Domain, "global_post_commands", err))
 		}
+		result.Failures = len(deployed)
 		zap.L().Info("certificate check round finished",
 			zap.Int("domains", len(u.cfg.Domains)),
 			zap.Int("successfulUpdates", 0),
-			zap.Int("failures", len(deployed)))
-		return
+			zap.Int("failures", len(deployed)),
+			zap.Bool("force", options.Force))
+		return result
 	}
 	zap.L().Info("global post commands completed", zap.Int("commands", len(globalPostCommands)))
 
@@ -134,11 +169,14 @@ func (u *Updater) checkOnce(ctx context.Context) {
 	for _, item := range deployed {
 		observed, err := u.verifyDeployedDomain(ctx, item)
 		if err != nil {
+			result.SuccessfulUpdates = len(successful)
+			result.Failures = 1
 			zap.L().Info("certificate check round finished",
 				zap.Int("domains", len(u.cfg.Domains)),
 				zap.Int("successfulUpdates", len(successful)),
-				zap.Int("failures", 1))
-			return
+				zap.Int("failures", 1),
+				zap.Bool("force", options.Force))
+			return result
 		}
 		successful = append(successful, successfulUpdate{
 			domain:   item.domain,
@@ -152,18 +190,22 @@ func (u *Updater) checkOnce(ctx context.Context) {
 		u.notifier.Success("Certificate Updated",
 			formatSuccessNotification(item.domain.Domain, item.material.CertificateID, item.observed.NotAfter))
 	}
+	result.SuccessfulUpdates = len(successful)
 	zap.L().Info("certificate check round finished",
 		zap.Int("domains", len(u.cfg.Domains)),
 		zap.Int("successfulUpdates", len(successful)),
-		zap.Int("failures", 0))
+		zap.Int("failures", 0),
+		zap.Bool("force", options.Force))
+	return result
 }
 
-func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deployedUpdate, bool) {
+func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig, options CheckOptions) (*deployedUpdate, bool) {
 	zap.L().Info("processing domain",
 		zap.String("domain", domain.Domain),
-		zap.String("provider", domain.EffectiveProvider))
+		zap.String("provider", domain.EffectiveProvider),
+		zap.Bool("force", options.Force))
 
-	currentCert, err := probeTLSCertificate(ctx, domain.Domain)
+	currentCert, err := u.probeCertificate(ctx, domain.Domain)
 	if err != nil {
 		zap.L().Error("probe current certificate failed",
 			zap.Error(err),
@@ -183,7 +225,13 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 		zap.Time("notAfter", currentCert.NotAfter),
 		zap.String("fingerprint", currentCert.Fingerprint))
 
-	if remaining > u.cfg.Alert.BeforeExpired {
+	if options.Force {
+		zap.L().Info("force mode enabled, skipping renewal window check",
+			zap.String("domain", domain.Domain),
+			zap.String("provider", domain.EffectiveProvider),
+			zap.Duration("remaining", remaining),
+			zap.Duration("beforeExpired", u.cfg.Alert.BeforeExpired))
+	} else if remaining > u.cfg.Alert.BeforeExpired {
 		zap.L().Info("certificate is not in renewal window",
 			zap.String("domain", domain.Domain),
 			zap.String("provider", domain.EffectiveProvider),
@@ -192,11 +240,19 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 		return nil, true
 	}
 
-	zap.L().Info("certificate entered renewal window",
-		zap.String("domain", domain.Domain),
-		zap.String("provider", domain.EffectiveProvider),
-		zap.Duration("remaining", remaining),
-		zap.Duration("beforeExpired", u.cfg.Alert.BeforeExpired))
+	if options.Force {
+		zap.L().Info("continuing with forced certificate selection",
+			zap.String("domain", domain.Domain),
+			zap.String("provider", domain.EffectiveProvider),
+			zap.Duration("remaining", remaining),
+			zap.Duration("beforeExpired", u.cfg.Alert.BeforeExpired))
+	} else {
+		zap.L().Info("certificate entered renewal window",
+			zap.String("domain", domain.Domain),
+			zap.String("provider", domain.EffectiveProvider),
+			zap.Duration("remaining", remaining),
+			zap.Duration("beforeExpired", u.cfg.Alert.BeforeExpired))
+	}
 
 	provider, err := resolveProvider(u.providers, domain)
 	if err != nil {
@@ -210,10 +266,11 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 		return nil, false
 	}
 
-	zap.L().Info("querying provider for newer certificate",
+	zap.L().Info("querying provider for certificate",
 		zap.String("domain", domain.Domain),
-		zap.String("provider", domain.EffectiveProvider))
-	resolution, err := provider.ResolveCertificate(ctx, domain.Domain, toProviderObservedCertificate(currentCert))
+		zap.String("provider", domain.EffectiveProvider),
+		zap.Bool("force", options.Force))
+	resolution, err := provider.ResolveCertificate(ctx, domain.Domain, toProviderObservedCertificate(currentCert), providerpkg.ResolveOptions{Force: options.Force})
 	if err != nil {
 		stage := "query_or_download"
 		var stageErr *providerpkg.StageError
@@ -230,7 +287,11 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 		return nil, false
 	}
 	if resolution == nil || (resolution.Material == nil && resolution.Pending == nil) {
-		zap.L().Info("no newer provider certificate",
+		message := "no newer provider certificate"
+		if options.Force {
+			message = "no provider certificate available for forced deployment"
+		}
+		zap.L().Info(message,
 			zap.String("domain", domain.Domain),
 			zap.String("provider", domain.EffectiveProvider))
 		return nil, true
@@ -249,7 +310,7 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 
 	nextCert := fromProviderCertificateMaterial(resolution.Material)
 
-	zap.L().Info("deploying newer certificate",
+	zap.L().Info("deploying selected certificate",
 		zap.String("domain", domain.Domain),
 		zap.String("provider", domain.EffectiveProvider),
 		zap.String("certificateId", nextCert.CertificateID),
@@ -294,7 +355,7 @@ func (u *Updater) verifyDeployedDomain(ctx context.Context, item deployedUpdate)
 		zap.String("provider", domain.EffectiveProvider),
 		zap.String("certificateId", nextCert.CertificateID),
 		zap.String("expectedFingerprint", nextCert.Fingerprint))
-	observed, err := verifyExternalDeployment(ctx, domain.Domain, nextCert.Fingerprint)
+	observed, err := u.verifyDeployment(ctx, domain.Domain, nextCert.Fingerprint)
 	if err != nil {
 		zap.L().Error("verify external deployment failed",
 			zap.Error(err),

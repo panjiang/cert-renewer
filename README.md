@@ -2,7 +2,7 @@
 
 Update Tencent Cloud SSL certificates directly on the certificate host.
 
-The program runs on the machine that already serves the certificates. It checks the current public TLS certificate for each configured domain, downloads a newer Tencent Cloud certificate when the domain enters the `beforeExpired` window, replaces local certificate files atomically, runs domain-level `postCommands`, runs one round of `globalPostCommands` if every updated domain succeeded, and then verifies the external certificate.
+The program runs on the machine that already serves the certificates. It checks the current public TLS certificate for each configured domain, downloads a newer Tencent Cloud certificate when the domain enters the `beforeExpired` window, replaces local certificate files atomically, runs domain-level `postCommands`, runs one round of `globalPostCommands` if every updated domain succeeded, and then verifies the external certificate. You can also run a one-off forced check with `-force` to validate a fresh installation.
 
 ## Config
 
@@ -68,6 +68,14 @@ Command entries are executed with `sh -lc`. They can use Go template variables. 
 go run . -config=config.yaml
 ```
 
+Run one forced check round and exit:
+
+```sh
+go run . -config=config.yaml -force
+```
+
+`-force` skips the `beforeExpired` window and exits after one round. Use it for installation validation or troubleshooting. Do not add `-force` to the systemd service command.
+
 ## Install
 
 Install the latest Linux release:
@@ -93,6 +101,12 @@ Start the service after the config is ready:
 ```sh
 sudo systemctl enable --now cert-renewer
 sudo systemctl status cert-renewer
+```
+
+Validate the configuration once before or after starting the service:
+
+```sh
+sudo /usr/local/bin/cert-renewer -config=/etc/cert-renewer/config.yaml -force
 ```
 
 Upgrade to the latest release:
