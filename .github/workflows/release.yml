@@ -1,0 +1,58 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          binary="cloud-cert-renewer"
+          mkdir -p dist build
+
+          platforms=(
+            "linux/amd64"
+            "linux/arm64"
+          )
+
+          for platform in "${platforms[@]}"; do
+            goos="${platform%/*}"
+            goarch="${platform#*/}"
+            asset="${binary}_${goos}_${goarch}.tar.gz"
+
+            rm -rf build
+            mkdir -p build
+
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+              go build -trimpath -ldflags "-s -w" -o "build/${binary}" .
+
+            tar -C build -czf "dist/${asset}" "${binary}"
+          done
+
+          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --verify-tag --generate-notes

@@ -47,3 +47,39 @@ domains:
 ```sh
 go run . -config=config.yaml
 ```
+
+## Install
+
+Install the latest Linux release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/panjiang/cloud-cert-renewer/main/scripts/install.sh | sudo sh
+```
+
+Install a specific version:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/panjiang/cloud-cert-renewer/main/scripts/install.sh | sudo env VERSION=v0.1.0 sh
+```
+
+Create the runtime config:
+
+```sh
+sudo cp /etc/cloud-cert-renewer/config.yaml.example /etc/cloud-cert-renewer/config.yaml
+sudo chmod 600 /etc/cloud-cert-renewer/config.yaml
+sudo vi /etc/cloud-cert-renewer/config.yaml
+```
+
+Start the service after the config is ready:
+
+```sh
+sudo systemctl enable --now cloud-cert-renewer
+sudo systemctl status cloud-cert-renewer
+```
+
+Upgrade to the latest release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/panjiang/cloud-cert-renewer/main/scripts/install.sh | sudo sh
+sudo systemctl restart cloud-cert-renewer
+```
