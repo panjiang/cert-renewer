@@ -8,6 +8,7 @@ SERVICE_NAME="${SERVICE_NAME:-cert-renewer}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 CONFIG_DIR="${CONFIG_DIR:-/etc/cert-renewer}"
 SERVICE_FILE="${SERVICE_FILE:-/etc/systemd/system/${SERVICE_NAME}.service}"
+GITHUB_PROXY="${GITHUB_PROXY:-}"
 
 require_command() {
 	command -v "$1" >/dev/null 2>&1 || {
@@ -32,9 +33,19 @@ require_command systemctl
 require_command tar
 require_command uname
 
+github_url() {
+	url="$1"
+	if [ -n "$GITHUB_PROXY" ]; then
+		printf '%s/%s\n' "${GITHUB_PROXY%/}" "$url"
+		return 0
+	fi
+
+	printf '%s\n' "$url"
+}
+
 resolve_latest_version() {
 	api_url="https://api.github.com/repos/${REPO}/releases/latest"
-	response="$(curl -fsSL "$api_url")" || {
+	response="$(curl -fsSL "$(github_url "$api_url")")" || {
 		echo "failed to resolve latest release from ${api_url}" >&2
 		exit 1
 	}
@@ -49,7 +60,7 @@ resolve_latest_version() {
 }
 
 detect_installed_version() {
-	if version_output="$1" -version 2>/dev/null; then
+	if version_output="$("$1" -version 2>/dev/null)"; then
 		version_output="$(printf '%s' "$version_output" | tr -d '\r' | head -n 1)"
 		if [ -n "$version_output" ]; then
 			printf '%s\n' "$version_output"
@@ -89,8 +100,8 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
 echo "Downloading ${asset} from ${REPO} ${VERSION}..."
-curl -fsSL "${base_url}/${asset}" -o "${tmp_dir}/${asset}"
-curl -fsSL "${base_url}/SHA256SUMS" -o "${tmp_dir}/SHA256SUMS"
+curl -fsSL "$(github_url "${base_url}/${asset}")" -o "${tmp_dir}/${asset}"
+curl -fsSL "$(github_url "${base_url}/SHA256SUMS")" -o "${tmp_dir}/SHA256SUMS"
 
 awk -v file="$asset" '$2 == file { print; found = 1 } END { exit found ? 0 : 1 }' \
 	"${tmp_dir}/SHA256SUMS" >"${tmp_dir}/SHA256SUMS.selected" || {

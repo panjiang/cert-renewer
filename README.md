@@ -139,6 +139,24 @@ sudo journalctl -u cert-renewer -n 100 --no-pager
 sudo journalctl -u cert-renewer -f
 ```
 
+## China Proxy
+
+If direct access to GitHub is slow or blocked, use a mirrored script URL and set `GITHUB_PROXY`.
+
+Install or upgrade the latest release through `ghproxy.net`:
+
+```sh
+curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/install.sh | sudo env GITHUB_PROXY=https://ghproxy.net sh
+```
+
+Install a specific release through the same proxy:
+
+```sh
+curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/install.sh | sudo env GITHUB_PROXY=https://ghproxy.net VERSION=v0.1.4 sh
+```
+
+`GITHUB_PROXY` is applied to the script's GitHub API and release asset downloads.
+
 ## Upgrade
 
 ```sh
