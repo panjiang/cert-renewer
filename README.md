@@ -101,3 +101,15 @@ Upgrade to the latest release:
 curl -fsSL https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/install.sh | sudo sh
 sudo systemctl restart cert-renewer
 ```
+
+Uninstall:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/uninstall.sh | sudo sh
+```
+
+Keep the runtime config during uninstall:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/uninstall.sh | sudo env KEEP_CONFIG=1 sh
+```
