@@ -24,6 +24,8 @@ fi
 require_command curl
 require_command install
 require_command awk
+require_command chmod
+require_command chown
 require_command mktemp
 require_command sha256sum
 require_command systemctl
@@ -115,6 +117,13 @@ domains:
       - consul kv put certs/doc.yourdomain.com.key @{{.KeyPath}}
 EOF
 
+if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
+	install -m 0600 "${CONFIG_DIR}/config.yaml.example" "${CONFIG_DIR}/config.yaml"
+else
+	chown root:root "${CONFIG_DIR}/config.yaml"
+	chmod 0600 "${CONFIG_DIR}/config.yaml"
+fi
+
 cat >"$SERVICE_FILE" <<EOF
 [Unit]
 Description=Cloud Cert Renewer
@@ -139,10 +148,9 @@ systemctl daemon-reload
 echo "Installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
 echo "Installed systemd service to ${SERVICE_FILE}"
 echo "Configuration example: ${CONFIG_DIR}/config.yaml.example"
-if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
-	echo "Create ${CONFIG_DIR}/config.yaml before starting the service:"
-	echo "  cp ${CONFIG_DIR}/config.yaml.example ${CONFIG_DIR}/config.yaml"
-	echo "  chmod 600 ${CONFIG_DIR}/config.yaml"
-fi
-echo "Start the service with:"
-echo "  systemctl enable --now ${SERVICE_NAME}"
+echo "Runtime config: ${CONFIG_DIR}/config.yaml"
+echo "Edit config before starting:"
+echo "  sudo vi ${CONFIG_DIR}/config.yaml"
+echo "Start the service after the config is ready:"
+echo "  sudo systemctl enable --now ${SERVICE_NAME}"
+echo "  sudo systemctl status ${SERVICE_NAME}"

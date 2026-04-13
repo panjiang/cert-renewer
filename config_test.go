@@ -107,6 +107,24 @@ func TestConfigComplete(t *testing.T) {
 		}
 	})
 
+	t.Run("missing tencentcloud credentials", func(t *testing.T) {
+		cfg := Config{
+			Alert:           AlertConfig{BeforeExpiredStr: "10d"},
+			DefaultProvider: ProviderTencentCloud,
+			Domains: []DomainConfig{
+				{
+					Domain:   "doc.yourdomain.com",
+					CertPath: "/etc/nginx/ssl/doc.crt",
+					KeyPath:  "/etc/nginx/ssl/doc.key",
+				},
+			},
+		}
+
+		if err := cfg.Complete(); err == nil {
+			t.Fatal("Complete() expected missing credentials error")
+		}
+	})
+
 	t.Run("duplicate domain", func(t *testing.T) {
 		cfg := Config{
 			Alert:           AlertConfig{BeforeExpiredStr: "10d"},

@@ -144,10 +144,12 @@ func (c *Config) Complete() error {
 		return fmt.Errorf("domains is required")
 	}
 
-	if strings.TrimSpace(c.ProviderConfigs.TencentCloud.SecretID) == "" {
+	c.ProviderConfigs.TencentCloud.SecretID = strings.TrimSpace(c.ProviderConfigs.TencentCloud.SecretID)
+	if c.ProviderConfigs.TencentCloud.SecretID == "" {
 		return fmt.Errorf("providerConfigs.tencentcloud.secretId is required")
 	}
-	if strings.TrimSpace(c.ProviderConfigs.TencentCloud.SecretKey) == "" {
+	c.ProviderConfigs.TencentCloud.SecretKey = strings.TrimSpace(c.ProviderConfigs.TencentCloud.SecretKey)
+	if c.ProviderConfigs.TencentCloud.SecretKey == "" {
 		return fmt.Errorf("providerConfigs.tencentcloud.secretKey is required")
 	}
 	if err := c.ProviderConfigs.TencentCloud.AutoApply.complete(); err != nil {

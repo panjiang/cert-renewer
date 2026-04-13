@@ -21,5 +21,8 @@ Place tests next to the implementation with the standard `*_test.go` suffix. Pre
 ## Commit & Pull Request Guidelines
 Git history is not available in this workspace, so no repository-specific commit convention could be verified. Use short imperative commit subjects such as `validate duplicate domains` or `add wildcard coverage tests`. PRs should describe the operational impact, note any config changes, and include relevant command output for `go test ./...`. If deployment behavior changes, mention rollback considerations.
 
+## Release Guidelines
+Do not create or push git tags, GitHub Releases, or release-triggering refs unless the user explicitly asks to publish a version. Normal code changes may be committed and pushed when requested, but release publication requires a separate clear instruction.
+
 ## Security & Configuration Tips
 Do not commit real Tencent Cloud credentials or live webhook URLs. Treat `config.yaml` as a template, and prefer sanitized examples in docs and tests. Be careful when editing certificate paths or command hooks such as `globalPostCommands` and domain-level `postCommands`; these commands execute on the certificate host and can affect live reload behavior.
