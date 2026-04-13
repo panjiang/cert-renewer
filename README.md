@@ -8,59 +8,57 @@ The program runs on the machine that already serves the certificates. It checks 
 
 ```yaml
 alert:
+  # Renewal window. Must be between 3d and 30d.
   beforeExpired: 10d
+  # Check interval. Default is 12h. Minimum is 1m.
   checkInterval: 12h
+  # Optional. Leave empty to log only.
   notifyUrl: https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
 
 log:
+  # debug, info, warn, or error. Default is info.
   level: info
 
+# Default provider. Currently only tencentcloud is supported.
 defaultProvider: tencentcloud
 
 providerConfigs:
   tencentcloud:
+    # Required.
     secretId: xxx
+    # Required.
     secretKey: xxx
     autoApply:
+      # Auto-apply a free DV certificate when no deployable certificate exists.
+      # Wildcard domains are not auto-applied.
       enabled: true
+      # Poll interval for issuance status. Must be greater than 0.
       pollInterval: 1m
+      # Max wait time in one round. Must be >= pollInterval.
       pollTimeout: 10m
+      # Delete the DNS_AUTO validation record after verification.
       deleteDnsAutoRecord: true
 
+# Optional. Run once after all updated domains succeed.
 globalPostCommands:
   - nginx -t
   - nginx -s reload
 
 domains:
   - domain: doc.yourdomain.com
+    # Required certificate file path.
     certPath: /etc/nginx/ssl/doc.yourdomain.com.crt
+    # Required private key file path.
     keyPath: /etc/nginx/ssl/doc.yourdomain.com.key
+    # Optional. Run after this domain is deployed.
     postCommands:
       - consul kv put certs/doc.yourdomain.com.crt @{{.CertPath}}
       - consul kv put certs/doc.yourdomain.com.key @{{.KeyPath}}
 ```
 
 Durations use Go-style units plus day and week units: `ms`, `s`, `m`, `h`, `d`, and `w`. For example, `12h`, `10d`, and `1w`.
-
-| Field | Required | Default | Description |
-| --- | --- | --- | --- |
-| `alert.beforeExpired` | Yes | None | Renewal window. A domain is renewed only when its public TLS certificate expires within this duration. Must be between `3d` and `30d`. |
-| `alert.checkInterval` | No | `12h` | How often each domain is checked. Must be at least `1m`. This controls the polling interval, not the renewal window. |
-| `alert.notifyUrl` | No | Empty | Feishu custom bot webhook URL. When empty, notifications are written to logs only. |
-| `log.level` | No | `info` | Log level. Supported values are `debug`, `info`, `warn`, and `error`. |
-| `defaultProvider` | Yes | None | Default certificate provider for domains that do not set `provider`. Currently only `tencentcloud` is supported. |
-| `providerConfigs.tencentcloud.autoApply.enabled` | No | `true` | When no deployable newer certificate exists in Tencent Cloud, automatically apply for a free DV certificate with DNS auto validation. Wildcard domains are not auto-applied. |
-| `providerConfigs.tencentcloud.autoApply.pollInterval` | No | `1m` | How often to poll Tencent Cloud after submitting or finding a pending auto-apply certificate. Must be greater than `0`. |
-| `providerConfigs.tencentcloud.autoApply.pollTimeout` | No | `10m` | Maximum time to wait in one check round for an auto-applied certificate to be issued. Must be greater than or equal to `pollInterval`. |
-| `providerConfigs.tencentcloud.autoApply.deleteDnsAutoRecord` | No | `true` | Passed to Tencent Cloud when applying with `DNS_AUTO`; controls whether the validation DNS record should be deleted after verification. |
-| `globalPostCommands` | No | Empty | Shell commands run once after all updated domains finish local deployment successfully. Use this for shared reload steps such as `nginx -t` and `nginx -s reload`. The legacy top-level key `postCommands` is accepted as an alias, but do not set both top-level keys together. |
-| `domains[].domain` | Yes | None | Domain name to check through public TLS on port 443. Domain names must be unique in the config. |
-| `domains[].provider` | No | `defaultProvider` | Provider override for this domain. Currently only `tencentcloud` is supported. |
-| `domains[].certPath` | Yes | None | Local certificate file path to replace when a newer certificate is selected. Missing parent directories are created. Existing files are backed up as `*.bak.<timestamp>`. |
-| `domains[].keyPath` | Yes | None | Local private key file path to replace. Missing parent directories are created. Existing files are backed up as `*.bak.<timestamp>`. |
-| `domains[].postCommands` | No | Empty | Shell commands run after this domain's certificate and key files are deployed. Use this for per-domain sync steps such as writing the files to Consul. |
-
-Command entries are executed with `sh -lc`. They can use Go template variables. Domain-level `postCommands` receive `{{.Domain}}`, `{{.CertPath}}`, `{{.KeyPath}}`, `{{.BackupCertPath}}`, and `{{.BackupKeyPath}}`. Top-level `globalPostCommands` are global reload hooks and do not receive domain-specific values.
+Command entries are executed with `sh -lc`.
+Domain-level `postCommands` receive `{{.Domain}}`, `{{.CertPath}}`, `{{.KeyPath}}`, `{{.BackupCertPath}}`, and `{{.BackupKeyPath}}`. Top-level `globalPostCommands` do not receive domain-specific values.
 
 ## Run
 
