@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	providerpkg "github.com/panjiang/cloud-cert-renewer/provider"
@@ -121,12 +120,7 @@ func (u *Updater) checkOnce(ctx context.Context) {
 				zap.String("certificateId", item.material.CertificateID),
 				zap.Bool("filesChanged", item.result.FilesChanged))
 			u.notifier.Failure("Certificate Update Failed",
-				fmt.Sprintf("domain=%s stage=global_post_commands provider=%s certificateId=%s filesChanged=%t error=%v",
-					item.domain.Domain,
-					item.domain.EffectiveProvider,
-					item.material.CertificateID,
-					item.result.FilesChanged,
-					err))
+				formatFailureNotification(item.domain.Domain, "global_post_commands", err))
 		}
 		zap.L().Info("certificate check round finished",
 			zap.Int("domains", len(u.cfg.Domains)),
@@ -156,16 +150,7 @@ func (u *Updater) checkOnce(ctx context.Context) {
 
 	for _, item := range successful {
 		u.notifier.Success("Certificate Updated",
-			fmt.Sprintf("domain=%s provider=%s certificateId=%s fingerprint=%s serial=%s notAfter=%s filesChanged=%t postCommands=%s globalPostCommands=%s",
-				item.domain.Domain,
-				item.domain.EffectiveProvider,
-				item.material.CertificateID,
-				item.observed.Fingerprint,
-				item.observed.Serial,
-				item.observed.NotAfter.Format(time.RFC3339),
-				item.result.FilesChanged,
-				strings.Join(item.result.Commands, "; "),
-				strings.Join(globalPostCommands, "; ")))
+			formatSuccessNotification(item.domain.Domain, item.material.CertificateID, item.observed.NotAfter))
 	}
 	zap.L().Info("certificate check round finished",
 		zap.Int("domains", len(u.cfg.Domains)),
@@ -186,8 +171,7 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 			zap.String("stage", "probe_current_certificate"),
 			zap.String("provider", domain.EffectiveProvider))
 		u.notifier.Failure("Certificate Update Failed",
-			fmt.Sprintf("domain=%s stage=probe_current_certificate provider=%s error=%v",
-				domain.Domain, domain.EffectiveProvider, err))
+			formatFailureNotification(domain.Domain, "probe_current_certificate", err))
 		return nil, false
 	}
 
@@ -222,8 +206,7 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 			zap.String("stage", "resolve_provider"),
 			zap.String("provider", domain.EffectiveProvider))
 		u.notifier.Failure("Certificate Update Failed",
-			fmt.Sprintf("domain=%s stage=resolve_provider provider=%s error=%v",
-				domain.Domain, domain.EffectiveProvider, err))
+			formatFailureNotification(domain.Domain, "resolve_provider", err))
 		return nil, false
 	}
 
@@ -243,8 +226,7 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 			zap.String("stage", stage),
 			zap.String("provider", domain.EffectiveProvider))
 		u.notifier.Failure("Certificate Update Failed",
-			fmt.Sprintf("domain=%s stage=%s provider=%s error=%v",
-				domain.Domain, stage, domain.EffectiveProvider, err))
+			formatFailureNotification(domain.Domain, stage, err))
 		return nil, false
 	}
 	if resolution == nil || (resolution.Material == nil && resolution.Pending == nil) {
@@ -291,8 +273,7 @@ func (u *Updater) handleDomain(ctx context.Context, domain DomainConfig) (*deplo
 			zap.String("certPath", domain.CertPath),
 			zap.String("keyPath", domain.KeyPath))
 		u.notifier.Failure("Certificate Update Failed",
-			fmt.Sprintf("domain=%s stage=%s provider=%s certPath=%s keyPath=%s error=%v",
-				domain.Domain, stage, domain.EffectiveProvider, domain.CertPath, domain.KeyPath, err))
+			formatFailureNotification(domain.Domain, stage, err))
 		return nil, false
 	}
 
@@ -325,8 +306,7 @@ func (u *Updater) verifyDeployedDomain(ctx context.Context, item deployedUpdate)
 			zap.String("keyPath", domain.KeyPath),
 			zap.Bool("filesChanged", result.FilesChanged))
 		u.notifier.Failure("Certificate Update Failed",
-			fmt.Sprintf("domain=%s stage=verify_external provider=%s certPath=%s keyPath=%s filesChanged=%t error=%v",
-				domain.Domain, domain.EffectiveProvider, domain.CertPath, domain.KeyPath, result.FilesChanged, err))
+			formatFailureNotification(domain.Domain, "verify_external", err))
 		return nil, err
 	}
 	zap.L().Info("external deployment verified",
@@ -339,4 +319,15 @@ func (u *Updater) verifyDeployedDomain(ctx context.Context, item deployedUpdate)
 		zap.Bool("filesChanged", result.FilesChanged))
 
 	return observed, nil
+}
+
+func formatSuccessNotification(domain, certificateID string, notAfter time.Time) string {
+	return fmt.Sprintf("**域名**: %s\n**到期时间**: %s\n**证书ID**: %s",
+		domain,
+		notAfter.Format(time.RFC3339),
+		certificateID)
+}
+
+func formatFailureNotification(domain, stage string, err error) string {
+	return fmt.Sprintf("**域名**: %s\n**阶段**: %s\n**错误**: %v", domain, stage, err)
 }
