@@ -48,6 +48,18 @@ resolve_latest_version() {
 	printf '%s\n' "$version"
 }
 
+detect_installed_version() {
+	if version_output="$1" -version 2>/dev/null; then
+		version_output="$(printf '%s' "$version_output" | tr -d '\r' | head -n 1)"
+		if [ -n "$version_output" ]; then
+			printf '%s\n' "$version_output"
+			return 0
+		fi
+	fi
+
+	return 1
+}
+
 os="$(uname -s)"
 if [ "$os" != "Linux" ]; then
 	echo "unsupported OS: $os" >&2
@@ -160,7 +172,12 @@ EOF
 
 systemctl daemon-reload
 
-echo "Installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
+installed_version="$VERSION"
+if detected_version="$(detect_installed_version "${INSTALL_DIR}/${BINARY_NAME}")"; then
+	installed_version="$detected_version"
+fi
+
+echo "Installed ${BINARY_NAME} ${installed_version} to ${INSTALL_DIR}/${BINARY_NAME}"
 echo "Installed systemd service to ${SERVICE_FILE}"
 echo "Configuration example: ${CONFIG_DIR}/config.yaml.example"
 echo "Runtime config: ${CONFIG_DIR}/config.yaml"
