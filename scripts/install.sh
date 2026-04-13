@@ -32,6 +32,22 @@ require_command systemctl
 require_command tar
 require_command uname
 
+resolve_latest_version() {
+	api_url="https://api.github.com/repos/${REPO}/releases/latest"
+	response="$(curl -fsSL "$api_url")" || {
+		echo "failed to resolve latest release from ${api_url}" >&2
+		exit 1
+	}
+
+	version="$(printf '%s\n' "$response" | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+	if [ -z "$version" ]; then
+		echo "failed to parse latest release tag from ${api_url}" >&2
+		exit 1
+	fi
+
+	printf '%s\n' "$version"
+}
+
 os="$(uname -s)"
 if [ "$os" != "Linux" ]; then
 	echo "unsupported OS: $os" >&2
@@ -53,10 +69,9 @@ esac
 
 asset="${BINARY_NAME}_linux_${arch}.tar.gz"
 if [ "$VERSION" = "latest" ]; then
-	base_url="https://github.com/${REPO}/releases/latest/download"
-else
-	base_url="https://github.com/${REPO}/releases/download/${VERSION}"
+	VERSION="$(resolve_latest_version)"
 fi
+base_url="https://github.com/${REPO}/releases/download/${VERSION}"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
