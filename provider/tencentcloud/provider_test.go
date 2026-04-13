@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	providerpkg "github.com/panjiang/cloud-cert-renewer/provider"
+	providerpkg "github.com/panjiang/cert-renewer/provider"
 )
 
 func TestCoveredByPattern(t *testing.T) {

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	providerpkg "github.com/panjiang/cloud-cert-renewer/provider"
-	tencentcloudprovider "github.com/panjiang/cloud-cert-renewer/provider/tencentcloud"
+	providerpkg "github.com/panjiang/cert-renewer/provider"
+	tencentcloudprovider "github.com/panjiang/cert-renewer/provider/tencentcloud"
 	"go.uber.org/zap"
 )
 

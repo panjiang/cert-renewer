@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          binary="cloud-cert-renewer"
+          binary="cert-renewer"
           mkdir -p dist build
 
           platforms=(

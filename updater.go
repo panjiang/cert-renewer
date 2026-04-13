@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	providerpkg "github.com/panjiang/cloud-cert-renewer/provider"
+	providerpkg "github.com/panjiang/cert-renewer/provider"
 	"go.uber.org/zap"
 )
 

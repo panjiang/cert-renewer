@@ -26,7 +26,7 @@ func main() {
 		syncLoggerBestEffort(zap.L())
 	}()
 
-	zap.L().Info("starting cloud-cert-renewer", zap.String("config", configFilePath))
+	zap.L().Info("starting cert-renewer", zap.String("config", configFilePath))
 
 	cfg, err := LoadConfig(configFilePath)
 	if err != nil {

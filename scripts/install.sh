@@ -1,12 +1,12 @@
 #!/bin/sh
 set -eu
 
-REPO="${REPO:-panjiang/cloud-cert-renewer}"
+REPO="${REPO:-panjiang/cert-renewer}"
 VERSION="${VERSION:-latest}"
-BINARY_NAME="${BINARY_NAME:-cloud-cert-renewer}"
-SERVICE_NAME="${SERVICE_NAME:-cloud-cert-renewer}"
+BINARY_NAME="${BINARY_NAME:-cert-renewer}"
+SERVICE_NAME="${SERVICE_NAME:-cert-renewer}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-CONFIG_DIR="${CONFIG_DIR:-/etc/cloud-cert-renewer}"
+CONFIG_DIR="${CONFIG_DIR:-/etc/cert-renewer}"
 SERVICE_FILE="${SERVICE_FILE:-/etc/systemd/system/${SERVICE_NAME}.service}"
 
 require_command() {
@@ -126,7 +126,7 @@ fi
 
 cat >"$SERVICE_FILE" <<EOF
 [Unit]
-Description=Cloud Cert Renewer
+Description=Cert Renewer
 Wants=network-online.target
 After=network-online.target
 

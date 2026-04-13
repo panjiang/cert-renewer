@@ -1,4 +1,4 @@
-module github.com/panjiang/cloud-cert-renewer
+module github.com/panjiang/cert-renewer
 
 go 1.23.0
 

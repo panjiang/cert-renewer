@@ -120,7 +120,7 @@ func feishuCardPayload(kind feishuMessageKind, title, content string) map[string
 					"elements": []map[string]string{
 						{
 							"tag":     "lark_md",
-							"content": "cloud-cert-renewer",
+							"content": "cert-renewer",
 						},
 					},
 				},

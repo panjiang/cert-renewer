@@ -7,7 +7,7 @@ This repository is a small Go CLI with a `main` package for orchestration plus a
 Use standard Go tooling:
 
 - `go run . -config=config.yaml` runs the updater locally with the sample config.
-- `go build .` builds the `cloud-cert-renewer` binary in the repository root.
+- `go build .` builds the `cert-renewer` binary in the repository root.
 - `go test ./...` runs the current unit tests.
 - `go test -cover ./...` reports coverage; current baseline is modest, so add tests with behavior changes.
 - `gofmt -w *.go provider/*.go provider/tencentcloud/*.go` formats all Go files before review.

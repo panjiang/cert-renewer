@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	providerpkg "github.com/panjiang/cloud-cert-renewer/provider"
+	providerpkg "github.com/panjiang/cert-renewer/provider"
 )
 
 var tencentTimeLocation = time.FixedZone("GMT+8", 8*60*60)

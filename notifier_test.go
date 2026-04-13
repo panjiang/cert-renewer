@@ -30,8 +30,8 @@ func TestFeishuCardPayloadSuccess(t *testing.T) {
 	}
 
 	noteElements := elements[2]["elements"].([]map[string]string)
-	if got := noteElements[0]["content"]; got != "cloud-cert-renewer" {
-		t.Fatalf("note content = %q, want cloud-cert-renewer", got)
+	if got := noteElements[0]["content"]; got != "cert-renewer" {
+		t.Fatalf("note content = %q, want cert-renewer", got)
 	}
 }
 

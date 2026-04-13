@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	providerpkg "github.com/panjiang/cloud-cert-renewer/provider"
+	providerpkg "github.com/panjiang/cert-renewer/provider"
 	sslcommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	sslapi "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ssl/v20191205"

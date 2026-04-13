@@ -1,4 +1,4 @@
-# cloud-cert-renewer
+# cert-renewer
 
 Update Tencent Cloud SSL certificates directly on the certificate host.
 
@@ -73,31 +73,31 @@ go run . -config=config.yaml
 Install the latest Linux release:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/panjiang/cloud-cert-renewer/main/scripts/install.sh | sudo sh
+curl -fsSL https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/install.sh | sudo sh
 ```
 
 Install a specific version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/panjiang/cloud-cert-renewer/main/scripts/install.sh | sudo env VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/install.sh | sudo env VERSION=v0.1.0 sh
 ```
 
 Edit the runtime config. The installer creates this file with `0600` permissions if it does not already exist:
 
 ```sh
-sudo vi /etc/cloud-cert-renewer/config.yaml
+sudo vi /etc/cert-renewer/config.yaml
 ```
 
 Start the service after the config is ready:
 
 ```sh
-sudo systemctl enable --now cloud-cert-renewer
-sudo systemctl status cloud-cert-renewer
+sudo systemctl enable --now cert-renewer
+sudo systemctl status cert-renewer
 ```
 
 Upgrade to the latest release:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/panjiang/cloud-cert-renewer/main/scripts/install.sh | sudo sh
-sudo systemctl restart cloud-cert-renewer
+curl -fsSL https://raw.githubusercontent.com/panjiang/cert-renewer/main/scripts/install.sh | sudo sh
+sudo systemctl restart cert-renewer
 ```
