@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -199,4 +200,27 @@ func TestRunWithVersionFlagSkipsConfigLoading(t *testing.T) {
 	if got := string(output); got != "v9.9.9\n" {
 		t.Fatalf("stdout = %q, want %q", got, "v9.9.9\n")
 	}
+}
+
+func TestAcquireLockPreventsConcurrentRuns(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "cert-renewer.lock")
+
+	firstLock, err := acquireLock(lockPath)
+	if err != nil {
+		t.Fatalf("acquireLock() first error = %v", err)
+	}
+
+	secondLock, err := acquireLock(lockPath)
+	if err == nil {
+		releaseLock(secondLock)
+		t.Fatal("acquireLock() second expected error")
+	}
+
+	releaseLock(firstLock)
+
+	thirdLock, err := acquireLock(lockPath)
+	if err != nil {
+		t.Fatalf("acquireLock() third error = %v", err)
+	}
+	releaseLock(thirdLock)
 }

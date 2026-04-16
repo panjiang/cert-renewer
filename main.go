@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"go.uber.org/zap"
@@ -15,6 +17,8 @@ var runOnceMode bool
 var cleanupConfiguredOldMode bool
 var cleanupAllExpiredMode bool
 var showVersion bool
+
+const processLockPath = "/run/cert-renewer/cert-renewer.lock"
 
 func init() {
 	flag.StringVar(&configFilePath, "config", "config.yaml", "Config file path")
@@ -55,6 +59,13 @@ func run() int {
 		zap.Bool("runOnce", runOnceMode),
 		zap.Bool("cleanupConfiguredOld", cleanupConfiguredOldMode),
 		zap.Bool("cleanupAllExpired", cleanupAllExpiredMode))
+
+	lockFile, err := acquireProcessLock()
+	if err != nil {
+		zap.L().Error("acquire process lock failed", zap.Error(err), zap.String("lockPath", processLockPath))
+		return 1
+	}
+	defer releaseLock(lockFile)
 
 	cfg, err := LoadConfig(configFilePath)
 	if err != nil {
@@ -133,4 +144,38 @@ func handleShutdown(stop func()) {
 		zap.L().Info("received shutdown signal", zap.String("signal", sig.String()))
 		stop()
 	}()
+}
+
+func acquireProcessLock() (*os.File, error) {
+	return acquireLock(processLockPath)
+}
+
+func acquireLock(lockPath string) (*os.File, error) {
+	lockDir := filepath.Dir(lockPath)
+	if err := os.MkdirAll(lockDir, 0755); err != nil {
+		return nil, fmt.Errorf("ensure lock directory %s: %w", lockDir, err)
+	}
+
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("open lock file %s: %w", lockPath, err)
+	}
+
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = lockFile.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			return nil, fmt.Errorf("another cert-renewer process is already running")
+		}
+		return nil, fmt.Errorf("lock file %s: %w", lockPath, err)
+	}
+
+	return lockFile, nil
+}
+
+func releaseLock(lockFile *os.File) {
+	if lockFile == nil {
+		return
+	}
+	_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+	_ = lockFile.Close()
 }

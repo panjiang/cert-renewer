@@ -123,8 +123,9 @@ providerConfigs:
   tencentcloud:
     secretId: xxx
     secretKey: xxx
-    # Optional. Delete older Tencent Cloud certificates asynchronously
-    # after the new certificate is externally verified. Default is false.
+    # Optional. This example enables automatic cleanup of older Tencent Cloud
+    # certificates after the new certificate is externally verified.
+    # If this field is omitted, the runtime default is false.
     autoDeleteOldCertificates: true
     autoApply:
       enabled: true
@@ -163,6 +164,8 @@ Type=simple
 ExecStart=${INSTALL_DIR}/${BINARY_NAME} -config=${CONFIG_DIR}/config.yaml
 Restart=always
 RestartSec=30s
+RuntimeDirectory=cert-renewer
+RuntimeDirectoryMode=0755
 WorkingDirectory=${CONFIG_DIR}
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 User=root
@@ -184,9 +187,9 @@ echo "Configuration example: ${CONFIG_DIR}/config.yaml.example"
 echo "Runtime config: ${CONFIG_DIR}/config.yaml"
 echo "Edit config before starting:"
 echo "  sudo vi ${CONFIG_DIR}/config.yaml"
-echo "Validate config with one normal check/update round before starting the service:"
+echo "Run one normal check/update round before starting the service:"
 echo "  sudo ${INSTALL_DIR}/${BINARY_NAME} -config=${CONFIG_DIR}/config.yaml -run-once"
-echo "  Note: -run-once runs one normal round and exits. Do not run it while the service is already running."
+echo "  Note: -run-once runs one normal round and exits. Concurrent runs are blocked by a global lock."
 echo "Start the service after the config is ready:"
 echo "  sudo systemctl enable --now ${SERVICE_NAME}"
 echo "  sudo systemctl status ${SERVICE_NAME}"

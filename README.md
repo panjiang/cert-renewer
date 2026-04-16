@@ -7,11 +7,11 @@ Run it on the machine that already serves the certificates.
 Supported features:
 
 - Checks the current public TLS certificate for each configured domain
-- Downloads a newer Tencent Cloud certificate when the domain enters the `beforeExpired` window
+- Downloads a deployable Tencent Cloud certificate when the domain enters the `beforeExpired` window
 - Optionally auto-applies a new Tencent Cloud DV certificate when no deployable certificate is available
 - Replaces local certificate files atomically
 - Runs domain-level `postCommands`
-- Runs `globalPostCommands` for each domain that reaches the deployment stage
+- Runs `globalPostCommands` once for each domain after local deployment and before external verification
 - Verifies the external certificate after `globalPostCommands`
 - Optionally starts asynchronous cleanup of older Tencent Cloud certificates after verification succeeds
 
@@ -85,8 +85,9 @@ providerConfigs:
     secretId: xxx
     # Required.
     secretKey: xxx
-    # Optional. Delete older Tencent Cloud certificates asynchronously
-    # after the new certificate is externally verified. Default is false.
+    # Optional. This example enables automatic cleanup of older Tencent Cloud
+    # certificates after the new certificate is externally verified.
+    # If this field is omitted, the runtime default is false.
     autoDeleteOldCertificates: true
     autoApply:
       # Auto-apply a free DV certificate when no deployable certificate exists.
@@ -124,9 +125,9 @@ Configuration notes:
 - Domain-level `postCommands` receive `{{.Domain}}`, `{{.CertPath}}`, `{{.KeyPath}}`, `{{.BackupCertPath}}`, and `{{.BackupKeyPath}}`.
 - Top-level `globalPostCommands` do not receive domain-specific values.
 - `providerConfigs.tencentcloud.autoDeleteOldCertificates` defaults to `false` when omitted.
-- Old certificate cleanup only runs after the new certificate is externally verified, and it skips any certificate that still appears to be live or shared with another managed domain.
+- Automatic old-certificate cleanup only runs after the new certificate is externally verified, and it skips any certificate that still appears to be live or shared with another managed domain.
 
-## Validate (Optional)
+## Run Once (Optional)
 
 Run one normal round before starting the service:
 
@@ -135,10 +136,22 @@ sudo /usr/local/bin/cert-renewer -config=/etc/cert-renewer/config.yaml -run-once
 ```
 
 This is not a dry-run. It may download or apply certificates, replace local files, run `postCommands`, run `globalPostCommands`, verify the external certificate, and trigger old certificate cleanup.
+Concurrent `cert-renewer` runs are blocked automatically by a global lock file.
 
-Use it to validate the configuration and operational flow before enabling the service.
+## Daemon
 
-Make sure the `cert-renewer` service is not already running when you execute it.
+Start the service after the config is ready:
+
+```sh
+sudo systemctl enable --now cert-renewer
+sudo systemctl status cert-renewer
+```
+
+View service logs:
+
+```sh
+sudo journalctl -u cert-renewer -f
+```
 
 ## Cleanup (Optional)
 
@@ -158,21 +171,6 @@ sudo /usr/local/bin/cert-renewer -config=/etc/cert-renewer/config.yaml -cleanup-
 
 This cleanup command is explicit and does not depend on `autoDeleteOldCertificates`.
 It deletes expired Tencent Cloud server certificates visible to the configured account.
-
-## Daemon
-
-Start the service after the config is ready:
-
-```sh
-sudo systemctl enable --now cert-renewer
-sudo systemctl status cert-renewer
-```
-
-View service logs:
-
-```sh
-sudo journalctl -u cert-renewer -f
-```
 
 ## Upgrade
 
