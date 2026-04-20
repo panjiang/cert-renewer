@@ -136,7 +136,6 @@ sudo /usr/local/bin/cert-renewer -config=/etc/cert-renewer/config.yaml -run-once
 ```
 
 This is not a dry-run. It may download or apply certificates, replace local files, run `postCommands`, run `globalPostCommands`, verify the external certificate, and trigger old certificate cleanup.
-Concurrent `cert-renewer` runs are blocked automatically by a global lock file.
 
 ## Daemon
 

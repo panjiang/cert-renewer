@@ -75,6 +75,16 @@ func (u *fakeUpdaterRunner) DeleteCleanupCandidates(candidates []providerpkg.Cle
 	return u.deleteCleanupCandidatesErr
 }
 
+func useNoopUpdateLock(t *testing.T) {
+	originalAcquireUpdateLock := acquireUpdateLock
+	acquireUpdateLock = func() (*os.File, error) {
+		return os.CreateTemp(t.TempDir(), "cert-renewer-lock")
+	}
+	t.Cleanup(func() {
+		acquireUpdateLock = originalAcquireUpdateLock
+	})
+}
+
 func TestExecuteRunDefaultMode(t *testing.T) {
 	updater := &fakeUpdaterRunner{}
 
@@ -91,6 +101,8 @@ func TestExecuteRunDefaultMode(t *testing.T) {
 }
 
 func TestExecuteRunOnceModeSuccess(t *testing.T) {
+	useNoopUpdateLock(t)
+
 	updater := &fakeUpdaterRunner{
 		result: CheckResult{},
 	}
@@ -111,6 +123,8 @@ func TestExecuteRunOnceModeSuccess(t *testing.T) {
 }
 
 func TestExecuteRunOnceModeFailure(t *testing.T) {
+	useNoopUpdateLock(t)
+
 	updater := &fakeUpdaterRunner{
 		result: CheckResult{Failures: 1},
 	}
@@ -121,6 +135,109 @@ func TestExecuteRunOnceModeFailure(t *testing.T) {
 	}
 	if updater.runOnceCalls != 1 {
 		t.Fatalf("runOnceCalls = %d, want 1", updater.runOnceCalls)
+	}
+}
+
+func TestExecuteRunOnceModeLockConflict(t *testing.T) {
+	originalProcessLockPath := processLockPath
+	originalAcquireUpdateLock := acquireUpdateLock
+	processLockPath = filepath.Join(t.TempDir(), "cert-renewer.lock")
+	t.Cleanup(func() {
+		processLockPath = originalProcessLockPath
+		acquireUpdateLock = originalAcquireUpdateLock
+	})
+	acquireUpdateLock = acquireProcessLock
+
+	firstLock, err := acquireProcessLock()
+	if err != nil {
+		t.Fatalf("acquireProcessLock() error = %v", err)
+	}
+	defer releaseLock(firstLock)
+
+	updater := &fakeUpdaterRunner{}
+	exitCode := executeRun(updater, true)
+	if exitCode != 1 {
+		t.Fatalf("exitCode = %d, want 1", exitCode)
+	}
+	if updater.runOnceCalls != 0 {
+		t.Fatalf("runOnceCalls = %d, want 0", updater.runOnceCalls)
+	}
+}
+
+func TestRunUpdateRoundWithLockRunsAndReleases(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "cert-renewer.lock")
+	calls := 0
+
+	result, ran, err := runUpdateRoundWithLock(func() (*os.File, error) {
+		return acquireLock(lockPath)
+	}, func() CheckResult {
+		calls++
+		return CheckResult{SuccessfulUpdates: 1}
+	})
+	if err != nil {
+		t.Fatalf("runUpdateRoundWithLock() error = %v", err)
+	}
+	if !ran {
+		t.Fatal("ran = false, want true")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	if result.SuccessfulUpdates != 1 {
+		t.Fatalf("SuccessfulUpdates = %d, want 1", result.SuccessfulUpdates)
+	}
+
+	lockFile, err := acquireLock(lockPath)
+	if err != nil {
+		t.Fatalf("acquireLock() after release error = %v", err)
+	}
+	releaseLock(lockFile)
+}
+
+func TestRunUpdateRoundWithLockSkipsOnLockConflict(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "cert-renewer.lock")
+	firstLock, err := acquireLock(lockPath)
+	if err != nil {
+		t.Fatalf("acquireLock() error = %v", err)
+	}
+	defer releaseLock(firstLock)
+
+	calls := 0
+	_, ran, err := runUpdateRoundWithLock(func() (*os.File, error) {
+		return acquireLock(lockPath)
+	}, func() CheckResult {
+		calls++
+		return CheckResult{}
+	})
+	if !errors.Is(err, errProcessLocked) {
+		t.Fatalf("error = %v, want errProcessLocked", err)
+	}
+	if ran {
+		t.Fatal("ran = true, want false")
+	}
+	if calls != 0 {
+		t.Fatalf("calls = %d, want 0", calls)
+	}
+}
+
+func TestRunUpdateRoundWithLockReturnsAcquireError(t *testing.T) {
+	wantErr := io.ErrClosedPipe
+	calls := 0
+
+	_, ran, err := runUpdateRoundWithLock(func() (*os.File, error) {
+		return nil, wantErr
+	}, func() CheckResult {
+		calls++
+		return CheckResult{}
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want %v", err, wantErr)
+	}
+	if ran {
+		t.Fatal("ran = true, want false")
+	}
+	if calls != 0 {
+		t.Fatalf("calls = %d, want 0", calls)
 	}
 }
 

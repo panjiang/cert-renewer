@@ -69,7 +69,7 @@ func (u *Updater) Run() {
 
 	zap.L().Info("started", zap.Duration("interval", u.cfg.Alert.CheckInterval), zap.Bool("force", false))
 	for {
-		u.checkOnce(u.ctx, CheckOptions{})
+		u.runScheduledCheck(CheckOptions{})
 		select {
 		case <-ticker.C:
 		case <-u.ctx.Done():
@@ -80,6 +80,27 @@ func (u *Updater) Run() {
 
 func (u *Updater) RunOnce(options CheckOptions) CheckResult {
 	return u.checkOnce(u.ctx, options)
+}
+
+func (u *Updater) runScheduledCheck(options CheckOptions) {
+	_, _, err := runUpdateRoundWithLock(acquireUpdateLock, func() CheckResult {
+		return u.checkOnce(u.ctx, options)
+	})
+	if err == nil {
+		return
+	}
+	if errors.Is(err, errProcessLocked) {
+		zap.L().Info("skipping certificate check round because another update task is already running",
+			zap.Error(err),
+			zap.String("lockPath", processLockPath),
+			zap.Bool("force", options.Force))
+		return
+	}
+
+	zap.L().Error("acquire process lock failed for certificate check round",
+		zap.Error(err),
+		zap.String("lockPath", processLockPath),
+		zap.Bool("force", options.Force))
 }
 
 func (u *Updater) CleanupUnusedOldCertificates() error {

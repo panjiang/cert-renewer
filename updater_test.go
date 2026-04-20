@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -435,6 +436,94 @@ func TestUpdaterRunOnceStartsCleanupAfterVerifyWhenEnabled(t *testing.T) {
 	}
 	if notifier.successes != 1 {
 		t.Fatalf("success notifications = %d, want 1", notifier.successes)
+	}
+}
+
+func TestUpdaterRunSkipsLockedRoundAndContinues(t *testing.T) {
+	originalProcessLockPath := processLockPath
+	originalAcquireUpdateLock := acquireUpdateLock
+	processLockPath = filepath.Join(t.TempDir(), "cert-renewer.lock")
+	t.Cleanup(func() {
+		processLockPath = originalProcessLockPath
+		acquireUpdateLock = originalAcquireUpdateLock
+	})
+	acquireUpdateLock = acquireProcessLock
+
+	firstLock, err := acquireProcessLock()
+	if err != nil {
+		t.Fatalf("acquireProcessLock() error = %v", err)
+	}
+	defer releaseLock(firstLock)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	providerCalled := make(chan struct{}, 1)
+	provider := &fakeUpdaterProvider{
+		resolveFunc: func(ctx context.Context, domain string, current *providerpkg.ObservedCertificate, options providerpkg.ResolveOptions) (*providerpkg.CertificateResolution, error) {
+			select {
+			case providerCalled <- struct{}{}:
+			default:
+			}
+			cancel()
+			return &providerpkg.CertificateResolution{}, nil
+		},
+	}
+	updater := &Updater{
+		cfg: &Config{
+			Alert: AlertConfig{
+				BeforeExpired: 10 * 24 * time.Hour,
+				CheckInterval: 20 * time.Millisecond,
+			},
+			Domains: []DomainConfig{
+				{
+					Domain:            "example.com",
+					EffectiveProvider: ProviderTencentCloud,
+				},
+			},
+		},
+		notifier:  &fakeUpdaterNotifier{},
+		providers: map[string]providerpkg.Provider{ProviderTencentCloud: provider},
+		deployer:  &fakeUpdaterDeployer{},
+		ctx:       ctx,
+		probeCertificate: func(ctx context.Context, domain string) (*ObservedCertificate, error) {
+			return &ObservedCertificate{
+				Domain:      domain,
+				Fingerprint: "current-fingerprint",
+				NotAfter:    time.Now().Add(24 * time.Hour),
+			}, nil
+		},
+		verifyDeployment: func(ctx context.Context, domain, expectedFingerprint string) (*ObservedCertificate, error) {
+			t.Fatal("verifyDeployment should not be called without a deployed certificate")
+			return nil, nil
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		updater.Run()
+		close(done)
+	}()
+
+	select {
+	case <-providerCalled:
+		t.Fatal("provider should not run while the first round is locked")
+	case <-time.After(10 * time.Millisecond):
+	}
+
+	releaseLock(firstLock)
+	firstLock = nil
+
+	select {
+	case <-providerCalled:
+	case <-time.After(time.Second):
+		t.Fatal("provider was not called after the lock was released")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run() did not continue after the locked round")
 	}
 }
 

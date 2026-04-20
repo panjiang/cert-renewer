@@ -24,7 +24,11 @@ var cleanupConfiguredOldMode bool
 var cleanupAllExpiredMode bool
 var showVersion bool
 
-const processLockPath = "/run/cert-renewer/cert-renewer.lock"
+var (
+	processLockPath   = "/run/cert-renewer/cert-renewer.lock"
+	errProcessLocked  = errors.New("another cert-renewer process is already running")
+	acquireUpdateLock = acquireProcessLock
+)
 
 func init() {
 	flag.StringVar(&configFilePath, "config", "config.yaml", "Config file path")
@@ -67,13 +71,6 @@ func run() int {
 		zap.Bool("runOnce", runOnceMode),
 		zap.Bool("cleanupConfiguredOld", cleanupConfiguredOldMode),
 		zap.Bool("cleanupAllExpired", cleanupAllExpiredMode))
-
-	lockFile, err := acquireProcessLock()
-	if err != nil {
-		zap.L().Error("acquire process lock failed", zap.Error(err), zap.String("lockPath", processLockPath))
-		return 1
-	}
-	defer releaseLock(lockFile)
 
 	cfg, err := LoadConfig(configFilePath)
 	if err != nil {
@@ -121,11 +118,27 @@ func executeRun(updater updaterRunner, runOnce bool) int {
 		return 0
 	}
 
-	result := updater.RunOnce(CheckOptions{})
+	result, _, err := runUpdateRoundWithLock(acquireUpdateLock, func() CheckResult {
+		return updater.RunOnce(CheckOptions{})
+	})
+	if err != nil {
+		zap.L().Error("acquire process lock failed", zap.Error(err), zap.String("lockPath", processLockPath))
+		return 1
+	}
 	if result.Failures > 0 {
 		return 1
 	}
 	return 0
+}
+
+func runUpdateRoundWithLock(acquireLock func() (*os.File, error), run func() CheckResult) (CheckResult, bool, error) {
+	lockFile, err := acquireLock()
+	if err != nil {
+		return CheckResult{}, false, err
+	}
+	defer releaseLock(lockFile)
+
+	return run(), true, nil
 }
 
 func executeCleanup(updater updaterRunner, cleanupUnused, cleanupExpired bool) int {
@@ -262,7 +275,7 @@ func acquireLock(lockPath string) (*os.File, error) {
 	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = lockFile.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
-			return nil, fmt.Errorf("another cert-renewer process is already running")
+			return nil, fmt.Errorf("%w", errProcessLocked)
 		}
 		return nil, fmt.Errorf("lock file %s: %w", lockPath, err)
 	}
