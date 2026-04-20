@@ -24,6 +24,10 @@ Git history is not available in this workspace, so no repository-specific commit
 ## Release Guidelines
 Do not create or push git tags, GitHub Releases, or release-triggering refs unless the user explicitly asks to publish a version. Normal code changes may be committed and pushed when requested, but release publication requires a separate clear instruction.
 
+When publishing a version, treat `git push origin <tag>` as the canonical release trigger for this repository. The tag-triggered GitHub Actions workflow manages release creation, release notes, and release assets.
+
+Do not manually create a GitHub Release with `gh release create` or through the GitHub UI when publishing a tag. If a release for the tag already exists and must be adjusted, only use non-creating commands such as `gh release edit` or `gh release upload --clobber`.
+
 When drafting a release description, extract the key commit messages from the release range and list at most 10 items. End the description with a full changelog comparison line, for example: `Full Changelog: v0.1.6...v0.1.7`.
 
 ## Security & Configuration Tips
